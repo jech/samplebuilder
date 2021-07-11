@@ -391,7 +391,7 @@ func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
 	}
 
 	var data []byte
-	for s.tail != s.inc(last) {
+	for s.tail != s.head && s.tail != s.inc(last) {
 		buf, err := s.depacketizer.Unmarshal(s.packets[s.tail].packet.Payload)
 		s.releaseTail()
 		if err != nil {
