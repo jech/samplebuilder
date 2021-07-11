@@ -1,0 +1,16 @@
+This is a drop-in replacement for Pion's samplebuilder that is slightly
+faster, slightly more correct, and has some additional features.  It will
+hopefully be merged into Pion at some point.
+
+Differences from Pion:
+
+  * the `Pop` family of functions don't necessarily pop a packet if it is
+    blocked by an earlier incomplete packet; this limits the amount of
+    lost packets;
+
+  * there is the ability to detect partition ends, see the
+    `WithPartitionTailChecker` function;
+
+  * the `ForcePopWithTimestamp` function can be used to flush any
+    remaining packets.
+
