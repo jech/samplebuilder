@@ -66,9 +66,9 @@ func WithPartitionHeadChecker(checker rtp.PartitionHeadChecker) Option {
 
 // WithPartitionHeadChecker assigns a codec-specific PartitionHeadChecker.
 // For most audio codecs, this should just be
-//    func(p) bool { return true; }
+//    func(p *rtp.Packet) bool { return true; }
 // For most video codecs, this should be
-//    func(p) bool { return p.Mark; }
+//    func(p *rtp.Packet) bool { return p.Marker; }
 // It is always correct to return false, but it might cause one extra
 // packet to be buffered.
 func WithPartitionTailChecker(checker func(*rtp.Packet) bool) Option {
