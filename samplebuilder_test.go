@@ -35,15 +35,16 @@ func (f *fakeDepacketizer) IsDetectedFinalPacketInSequence(rtpPacketMarketBit bo
 }
 
 type test struct {
-	name       string
-	maxLate    uint16
-	headBytes  []byte
-	packets    []*rtp.Packet
-	samples    []*media.Sample
-	timestamps []uint32
+	name        string
+	maxLate     uint16
+	headBytes   []byte
+	tailChecker func(*rtp.Packet) bool
+	packets     []*rtp.Packet
+	samples     []*media.Sample
+	timestamps  []uint32
 }
 
-// stolen from Pion's samplebuilder
+// some tests stolen from Pion's samplebuilder
 var tests = []test{
 	{
 		name: "One",
@@ -148,6 +149,46 @@ var tests = []test{
 		},
 		maxLate: 5,
 	},
+	{
+		name: "PartitionTailChecker",
+		packets: []*rtp.Packet{
+			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5}, Payload: []byte{0x01}},
+			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 6}, Payload: []byte{0x02}},
+			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
+		},
+		samples: []*media.Sample{
+			{Data: []byte{0x02}, Duration: time.Second},
+			{Data: []byte{0x03}, Duration: time.Second},
+		},
+		timestamps: []uint32{
+			6, 7,
+		},
+		tailChecker: func(p *rtp.Packet) bool {
+			return true
+		},
+		maxLate: 50,
+	},
+	{
+		name: "Checkers",
+		packets: []*rtp.Packet{
+			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5}, Payload: []byte{0x01}},
+			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 6}, Payload: []byte{0x02}},
+			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
+		},
+		samples: []*media.Sample{
+			{Data: []byte{0x01}, Duration: 0},
+			{Data: []byte{0x02}, Duration: time.Second},
+			{Data: []byte{0x03}, Duration: time.Second},
+		},
+		timestamps: []uint32{
+			5, 6, 7,
+		},
+		headBytes: []byte{1},
+		tailChecker: func(p *rtp.Packet) bool {
+			return true
+		},
+		maxLate: 50,
+	},
 }
 
 func TestSamplebuilder(t *testing.T) {
@@ -157,6 +198,11 @@ func TestSamplebuilder(t *testing.T) {
 			if len(test.headBytes) > 0 {
 				opts = append(opts, WithPartitionHeadChecker(
 					&fakePartitionHeadChecker{headBytes: test.headBytes},
+				))
+			}
+			if test.tailChecker != nil {
+				opts = append(opts, WithPartitionTailChecker(
+					test.tailChecker,
 				))
 			}
 			s := New(test.maxLate, &fakeDepacketizer{}, 1, opts...)
