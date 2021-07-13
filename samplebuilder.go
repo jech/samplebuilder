@@ -64,7 +64,8 @@ func WithPartitionHeadChecker(checker rtp.PartitionHeadChecker) Option {
 	}
 }
 
-// WithPartitionHeadChecker assigns a codec-specific PartitionHeadChecker.
+// WithPartitionTailChecker assigns a codec-specific function to check
+// for frame endings.
 // For most audio codecs, this should just be
 //    func(p *rtp.Packet) bool { return true; }
 // For most video codecs, this should be
