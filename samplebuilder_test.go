@@ -10,21 +10,26 @@ import (
 )
 
 type fakeDepacketizer struct {
+	headBytes   []byte
+	tailChecker func([]byte, bool) bool
 }
 
 func (f *fakeDepacketizer) Unmarshal(r []byte) ([]byte, error) {
 	return r, nil
 }
 
-type fakePartitionHeadChecker struct {
-	headBytes []byte
-}
-
-func (f *fakePartitionHeadChecker) IsPartitionHead(payload []byte) bool {
+func (f *fakeDepacketizer) IsPartitionHead(payload []byte) bool {
 	for _, b := range f.headBytes {
 		if payload[0] == b {
 			return true
 		}
+	}
+	return false
+}
+
+func (f *fakeDepacketizer) IsPartitionTail(marker bool, payload []byte) bool {
+	if f.tailChecker != nil {
+		return f.tailChecker(payload, marker)
 	}
 	return false
 }
@@ -38,7 +43,7 @@ type test struct {
 	name        string
 	maxLate     uint16
 	headBytes   []byte
-	tailChecker func(*rtp.Packet) bool
+	tailChecker func([]byte, bool) bool
 	packets     []*rtp.Packet
 	samples     []*media.Sample
 	timestamps  []uint32
@@ -163,7 +168,7 @@ var tests = []test{
 		timestamps: []uint32{
 			6, 7,
 		},
-		tailChecker: func(p *rtp.Packet) bool {
+		tailChecker: func(payload []byte, marker bool) bool {
 			return true
 		},
 		maxLate: 50,
@@ -184,7 +189,7 @@ var tests = []test{
 			5, 6, 7,
 		},
 		headBytes: []byte{1},
-		tailChecker: func(p *rtp.Packet) bool {
+		tailChecker: func(payload []byte, marker bool) bool {
 			return true
 		},
 		maxLate: 50,
@@ -194,18 +199,10 @@ var tests = []test{
 func TestSamplebuilder(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var opts []Option
-			if len(test.headBytes) > 0 {
-				opts = append(opts, WithPartitionHeadChecker(
-					&fakePartitionHeadChecker{headBytes: test.headBytes},
-				))
-			}
-			if test.tailChecker != nil {
-				opts = append(opts, WithPartitionTailChecker(
-					test.tailChecker,
-				))
-			}
-			s := New(test.maxLate, &fakeDepacketizer{}, 1, opts...)
+			s := New(test.maxLate, &fakeDepacketizer{
+				headBytes:   test.headBytes,
+				tailChecker: test.tailChecker,
+			}, 1)
 			samples := []*media.Sample{}
 			timestamps := []uint32{}
 
@@ -245,9 +242,7 @@ func (f *truePartitionHeadChecker) IsPartitionHead(payload []byte) bool {
 }
 
 func TestSampleBuilderSequential(t *testing.T) {
-	s := New(10, &fakeDepacketizer{}, 1,
-		WithPartitionHeadChecker(&truePartitionHeadChecker{}),
-	)
+	s := New(10, &fakeDepacketizer{}, 1)
 	j := 0
 	for i := 0; i < 0x20000; i++ {
 		p := rtp.Packet{
@@ -263,21 +258,29 @@ func TestSampleBuilderSequential(t *testing.T) {
 			if sample == nil {
 				break
 			}
-			if ts != uint32(j+42) {
-				t.Errorf("wrong timestamp")
+			if ts != uint32(j+43) {
+				t.Errorf(
+					"wrong timestamp (got %v, expected %v)",
+					ts, uint32(j+43),
+				)
 			}
 			if len(sample.Data) != 1 {
-				t.Errorf("bad data length")
+				t.Errorf(
+					"bad data length (got %v, expected 1)",
+					len(sample.Data),
+				)
 			}
-			if sample.Data[0] != byte(j) {
-				t.Errorf("bad data")
+			if sample.Data[0] != byte(j+1) {
+				t.Errorf(
+					"bad data (got %v, expected %v)",
+					sample.Data[0], byte(j+1))
 			}
 			j++
 		}
 	}
-	// only the last packet should be dropped
-	if j != 0x1FFFF {
-		t.Errorf("Got %v, expected %v", j, 0x1FFFF)
+	// only the first and last packet should be dropped
+	if j != 0x1FFFE {
+		t.Errorf("Got %v, expected %v", j, 0x1FFFE)
 	}
 }
 

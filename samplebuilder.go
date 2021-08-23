@@ -23,8 +23,6 @@ type SampleBuilder struct {
 	head, tail uint16
 
 	depacketizer         rtp.Depacketizer
-	partitionHeadChecker rtp.PartitionHeadChecker
-	partitionTailChecker func(*rtp.Packet) bool
 	packetReleaseHandler func(*rtp.Packet)
 	sampleRate           uint32
 
@@ -54,29 +52,6 @@ func New(maxLate uint16, depacketizer rtp.Depacketizer, sampleRate uint32, opts 
 
 // An Option configures a SampleBuilder
 type Option func(o *SampleBuilder)
-
-// WithPartitionHeadChecker assigns a codec-specific PartitionHeadChecker.
-// Several PartitionHeadCheckers are available in the package
-// github.com/pion/rtp/codecs.
-func WithPartitionHeadChecker(checker rtp.PartitionHeadChecker) Option {
-	return func(s *SampleBuilder) {
-		s.partitionHeadChecker = checker
-	}
-}
-
-// WithPartitionTailChecker assigns a codec-specific function to check
-// for frame endings.
-// For most audio codecs, this should just be
-//    func(p *rtp.Packet) bool { return true; }
-// For most video codecs, this should be
-//    func(p *rtp.Packet) bool { return p.Marker; }
-// It is always correct to return false, but it might cause one extra
-// packet to be buffered.
-func WithPartitionTailChecker(checker func(*rtp.Packet) bool) Option {
-	return func(s *SampleBuilder) {
-		s.partitionTailChecker = checker
-	}
-}
 
 // WithPacketReleaseHandler sets a callback that is called when the
 // builder is about to release some packet.
@@ -162,18 +137,12 @@ func (s *SampleBuilder) dec(n uint16) uint16 {
 
 // isStart invokes the PartitionHeadChecker associted with s.
 func (s *SampleBuilder) isStart(p *rtp.Packet) bool {
-	if s.partitionHeadChecker == nil {
-		return false
-	}
-	return s.partitionHeadChecker.IsPartitionHead(p.Payload)
+	return s.depacketizer.IsPartitionHead(p.Payload)
 }
 
 // isEnd invokes the partitionTailChecker associated with s.
 func (s *SampleBuilder) isEnd(p *rtp.Packet) bool {
-	if s.partitionTailChecker == nil {
-		return false
-	}
-	return s.partitionTailChecker(p)
+	return s.depacketizer.IsPartitionTail(p.Marker, p.Payload)
 }
 
 // release releases a packet.
