@@ -225,9 +225,15 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 		if s.tail == s.inc(s.head) {
 			s.drop()
 		}
-		start := s.packets[last].end || s.packets[last].packet.Timestamp != p.Timestamp || s.isStart(p)
-		if start && s.packets[last].packet != nil {
-			s.packets[last].end = true
+		start := false
+		// drop may have dropped the whole buffer
+		if s.tail != s.head {
+			start = s.packets[last].end ||
+				s.packets[last].packet.Timestamp != p.Timestamp ||
+				s.isStart(p)
+			if start && s.packets[last].packet != nil {
+				s.packets[last].end = true
+			}
 		}
 		s.packets[s.head] = packet{
 			start:  start,

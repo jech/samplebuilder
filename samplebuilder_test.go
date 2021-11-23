@@ -284,6 +284,20 @@ func TestSampleBuilderSequential(t *testing.T) {
 	}
 }
 
+func TestSampleBuilderFull(t *testing.T) {
+	s := New(10, &fakeDepacketizer{[]byte{0}, nil}, 1)
+	s.Push(&rtp.Packet{
+		Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5},
+		Payload: []byte{0},
+	})
+	for i := uint16(5001); i < 5020; i++ {
+		s.Push(&rtp.Packet{
+			Header: rtp.Header{SequenceNumber: i, Timestamp: 5},
+			Payload: []byte{1},
+		})
+	}
+}
+
 func BenchmarkSampleBuilderSequential(b *testing.B) {
 	s := New(100, &fakeDepacketizer{}, 1)
 	b.ResetTimer()
