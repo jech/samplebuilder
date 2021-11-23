@@ -1,6 +1,6 @@
 module github.com/jech/samplebuilder
 
-go 1.16
+go 1.13
 
 require (
 	github.com/pion/rtp v1.7.2
