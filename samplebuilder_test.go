@@ -155,6 +155,54 @@ var tests = []test{
 		maxLate: 5,
 	},
 	{
+		name: "MultipleDisordered",
+		packets: []*rtp.Packet{
+			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 1}, Payload: []byte{0x01}},
+			{Header: rtp.Header{SequenceNumber: 5003, Timestamp: 4}, Payload: []byte{0x04}},
+			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 3}, Payload: []byte{0x03}},
+			{Header: rtp.Header{SequenceNumber: 5004, Timestamp: 5}, Payload: []byte{0x05}},
+			{Header: rtp.Header{SequenceNumber: 5005, Timestamp: 6}, Payload: []byte{0x06}},
+			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 2}, Payload: []byte{0x02}},
+		},
+		samples: []*media.Sample{
+			{Data: []byte{0x02}, Duration: time.Second},
+			{Data: []byte{0x03}, Duration: time.Second},
+			{Data: []byte{0x04}, Duration: time.Second},
+			{Data: []byte{0x05}, Duration: time.Second},
+		},
+		timestamps: []uint32{
+			2,
+			3,
+			4,
+			5,
+		},
+		maxLate: 5,
+	},
+	{
+		name: "MultipleDisordered2",
+		packets: []*rtp.Packet{
+			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 3}, Payload: []byte{0x03}},
+			{Header: rtp.Header{SequenceNumber: 5003, Timestamp: 4}, Payload: []byte{0x04}},
+			{Header: rtp.Header{SequenceNumber: 5004, Timestamp: 5}, Payload: []byte{0x05}},
+			{Header: rtp.Header{SequenceNumber: 5005, Timestamp: 6}, Payload: []byte{0x06}},
+			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 1}, Payload: []byte{0x01}},
+			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 2}, Payload: []byte{0x02}},
+		},
+		samples: []*media.Sample{
+			{Data: []byte{0x02}, Duration: time.Second},
+			{Data: []byte{0x03}, Duration: time.Second},
+			{Data: []byte{0x04}, Duration: time.Second},
+			{Data: []byte{0x05}, Duration: time.Second},
+		},
+		timestamps: []uint32{
+			2,
+			3,
+			4,
+			5,
+		},
+		maxLate: 8,
+	},
+	{
 		name: "PartitionTailChecker",
 		packets: []*rtp.Packet{
 			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5}, Payload: []byte{0x01}},
