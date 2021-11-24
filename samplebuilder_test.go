@@ -229,9 +229,6 @@ func TestSamplebuilder(t *testing.T) {
 					timestamps, test.timestamps,
 				)
 			}
-			for i := s.tail; i != s.head; i = s.inc(i) {
-				println(i, s.packets[i].start, s.packets[i].end, s.packets[i].packet)
-			}
 
 		})
 	}
