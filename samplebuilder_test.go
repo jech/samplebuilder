@@ -208,9 +208,11 @@ func TestSamplebuilder(t *testing.T) {
 
 			for _, p := range test.packets {
 				s.Push(p)
+				s.check()
 			}
 			for {
 				sample, timestamp := s.ForcePopWithTimestamp()
+				s.check()
 				if sample == nil {
 					break
 				}
@@ -253,8 +255,10 @@ func TestSampleBuilderSequential(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
+		s.check()
 		for {
 			sample, ts := s.PopWithTimestamp()
+			s.check()
 			if sample == nil {
 				break
 			}
@@ -295,8 +299,10 @@ func TestSampleBuilderFull(t *testing.T) {
 			Header:  rtp.Header{SequenceNumber: i, Timestamp: 5},
 			Payload: []byte{1},
 		})
+		s.check()
 	}
 	sample, _ := s.ForcePopWithTimestamp()
+	s.check()
 	if sample != nil {
 		t.Errorf("Got %v, expected nil", sample)
 	}
