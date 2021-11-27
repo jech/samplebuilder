@@ -109,7 +109,10 @@ func (s *SampleBuilder) check() {
 
 // length returns the length of the packet sequence stored in the SampleBuilder.
 func (s *SampleBuilder) length() uint16 {
-	return (s.head - s.tail) % uint16(len(s.packets))
+	if s.tail <= s.head {
+		return s.head - s.tail
+	}
+	return s.head + uint16(len(s.packets)) - s.tail
 }
 
 // cap returns the capacity of the SampleBuilder.
