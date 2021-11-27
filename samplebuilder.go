@@ -237,6 +237,8 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 			if start && s.packets[last].packet != nil {
 				s.packets[last].end = true
 			}
+		} else {
+			start = s.isStart(p)
 		}
 		s.packets[s.head] = packet{
 			start:  start,
@@ -307,11 +309,11 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 	}
 
 	// compute start and end flags, both for us and our neighbours
-	start := false
+	start := s.isStart(p)
 	if index != s.tail {
 		prev := s.dec(index)
 		if s.packets[prev].packet != nil {
-			if s.packets[prev].packet.Timestamp != ts || s.isStart(p) {
+			if s.packets[prev].packet.Timestamp != ts {
 				start = true
 			}
 			if !start {
