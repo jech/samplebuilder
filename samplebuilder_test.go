@@ -109,7 +109,7 @@ var tests = []test{
 		},
 		headBytes: []byte{0x02},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: 0},
+			{Data: []byte{0x02}, Duration: time.Second},
 		},
 		timestamps: []uint32{
 			6,
@@ -332,13 +332,271 @@ func TestSampleBuilderSequential(t *testing.T) {
 	}
 }
 
+func TestSampleBuilderLoss(t *testing.T) {
+	s := New(10, &fakeDepacketizer{}, 1)
+	j := 0
+	for i := 0; i < 0x20000; i++ {
+		if i%3 == 2 {
+			continue
+		}
+		p := rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: uint16(i),
+				Timestamp:      uint32(i + 42),
+			},
+			Payload: []byte{byte(i)},
+		}
+		s.Push(&p)
+		s.check()
+		for {
+			sample, ts := s.PopWithTimestamp()
+			s.check()
+			if sample == nil {
+				break
+			}
+			if ts != uint32(j+43) {
+				t.Errorf(
+					"wrong timestamp (got %v, expected %v)",
+					ts, uint32(j+43),
+				)
+			}
+			if len(sample.Data) != 1 {
+				t.Errorf(
+					"bad data length (got %v, expected 1)",
+					len(sample.Data),
+				)
+			}
+			if sample.Data[0] != byte(j+1) {
+				t.Errorf(
+					"bad data (got %v, expected %v)",
+					sample.Data[0], byte(j+1))
+			}
+			j++
+		}
+	}
+	// since packets are discontigious and there's no partition
+	// checker, all packets should be dropped.
+	if j != 0 {
+		t.Errorf("Got %v, expected %v", j, 0)
+	}
+}
+
+func TestSampleBuilderLossChecker(t *testing.T) {
+	s := New(10, &fakeDepacketizer{
+		headChecker: func(_ []byte) bool { return true },
+		tailChecker: func(_ []byte, _ bool) bool { return true },
+	}, 1)
+	j := 0
+	for i := 0; i < 0x20000; i++ {
+		if i%3 == 2 {
+			continue
+		}
+		p := rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: uint16(i),
+				Timestamp:      uint32(i + 42),
+			},
+			Payload: []byte{byte(i)},
+		}
+		s.Push(&p)
+		s.check()
+		for {
+			sample, ts := s.PopWithTimestamp()
+			s.check()
+			if sample == nil {
+				break
+			}
+			k := j/2*3 + j%2
+			if ts != uint32(k+42) {
+				t.Errorf(
+					"wrong timestamp (got %v, expected %v)",
+					ts, uint32(k+44),
+				)
+			}
+			if len(sample.Data) != 1 {
+				t.Errorf(
+					"bad data length (got %v, expected 1)",
+					len(sample.Data),
+				)
+			}
+			if sample.Data[0] != byte(k) {
+				t.Errorf(
+					"bad data (got %v, expected %v)",
+					sample.Data[0], byte(k))
+			}
+			j++
+		}
+	}
+	// since packets are discontigious and there's no partition
+	// checker, all packets should be dropped.
+	if j != 0x1FFFE/3*2-4 {
+		t.Errorf("Got %v, expected %v", j, 0x1FFFE/3*2-4)
+	}
+}
+
+func TestSampleBuilderDisordered(t *testing.T) {
+	s := New(10, &fakeDepacketizer{}, 1)
+	j := 0
+	for i := 0; i < 0x20000; i++ {
+		k := i
+		if i%4 == 1 || i%4 == 3 {
+			k = i ^ 2
+		}
+		p := rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: uint16(k),
+				Timestamp:      uint32(k + 42),
+			},
+			Payload: []byte{byte(k)},
+		}
+		s.Push(&p)
+		s.check()
+		for {
+			sample, ts := s.PopWithTimestamp()
+			s.check()
+			if sample == nil {
+				break
+			}
+			if ts != uint32(j+43) {
+				t.Errorf(
+					"wrong timestamp (got %v, expected %v)",
+					ts, uint32(j+43),
+				)
+			}
+			if len(sample.Data) != 1 {
+				t.Errorf(
+					"bad data length (got %v, expected 1)",
+					len(sample.Data),
+				)
+			}
+			if sample.Data[0] != byte(j+1) {
+				t.Errorf(
+					"bad data (got %v, expected %v)",
+					sample.Data[0], byte(j+1))
+			}
+			j++
+		}
+	}
+	// only the first and last packet should be dropped
+	if j != 0x1FFFE {
+		t.Errorf("Got %v, expected %v", j, 0x1FFFE)
+	}
+}
+
+func TestSampleBuilderDisorderedChecker(t *testing.T) {
+	s := New(10, &fakeDepacketizer{
+		headChecker: func(_ []byte) bool { return true },
+		tailChecker: func(_ []byte, _ bool) bool { return true },
+	}, 1)
+	j := 0
+	for i := 0; i < 0x20000; i++ {
+		k := i
+		if i%4 == 1 || i%4 == 3 {
+			k = i ^ 2
+		}
+		p := rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: uint16(k),
+				Timestamp:      uint32(k + 42),
+			},
+			Payload: []byte{byte(k)},
+		}
+		s.Push(&p)
+		s.check()
+		for {
+			sample, ts := s.PopWithTimestamp()
+			s.check()
+			if sample == nil {
+				break
+			}
+			if ts != uint32(j+42) {
+				t.Errorf(
+					"wrong timestamp (got %v, expected %v)",
+					ts, uint32(j+42),
+				)
+			}
+			if len(sample.Data) != 1 {
+				t.Errorf(
+					"bad data length (got %v, expected 1)",
+					len(sample.Data),
+				)
+			}
+			if sample.Data[0] != byte(j) {
+				t.Errorf(
+					"bad data (got %v, expected %v)",
+					sample.Data[0], byte(j))
+			}
+			j++
+		}
+	}
+	// no packet drops
+	if j != 0x20000 {
+		t.Errorf("Got %v, expected %v", j, 0x1FFFE)
+	}
+}
+
+func TestSampleBuilderDisorderedLossChecker(t *testing.T) {
+	s := New(10, &fakeDepacketizer{
+		headChecker: func(_ []byte) bool { return true },
+		tailChecker: func(_ []byte, _ bool) bool { return true },
+	}, 1)
+	j := 0
+	previous := uint32(42)
+	for i := 0; i < 0x20000; i++ {
+		if i%5 == 2 {
+			continue
+		}
+		k := i
+		if i%4 == 1 || i%4 == 3 {
+			k = i ^ 2
+		}
+		p := rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: uint16(k),
+				Timestamp:      uint32(k + 42),
+			},
+			Payload: []byte{byte(k)},
+		}
+		s.Push(&p)
+		s.check()
+		for {
+			sample, ts := s.PopWithTimestamp()
+			s.check()
+			if sample == nil {
+				break
+			}
+			if ts-previous > 2 {
+				t.Errorf("wrong timestamp "+
+					"(got %v, expected roughly %v)",
+					ts, previous)
+			}
+			previous = ts
+			if len(sample.Data) != 1 {
+				t.Errorf(
+					"bad data length (got %v, expected 1)",
+					len(sample.Data),
+				)
+			}
+			if sample.Data[0] != byte(ts-42) {
+				t.Errorf(
+					"bad data (got %v, expected %v)",
+					sample.Data[0], byte(ts-42))
+			}
+			j++
+		}
+	}
+	if j != 0x20000*4/5-7 {
+		t.Errorf("Got %v, expected %v", j, 0x20000*4/5-7)
+	}
+}
+
 func TestSampleBuilderFull(t *testing.T) {
 	s := New(10, &fakeDepacketizer{}, 1)
 	s.Push(&rtp.Packet{
 		Header:  rtp.Header{SequenceNumber: 5000, Timestamp: 5},
 		Payload: []byte{0},
 	})
-	for i := uint16(5001); i < 5020; i++ {
+	for i := uint16(5001); i < 5100; i++ {
 		s.Push(&rtp.Packet{
 			Header:  rtp.Header{SequenceNumber: i, Timestamp: 5},
 			Payload: []byte{1},

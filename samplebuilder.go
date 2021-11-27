@@ -22,9 +22,15 @@ type SampleBuilder struct {
 	packets    []packet
 	head, tail uint16
 
+	maxLate              uint16
 	depacketizer         rtp.Depacketizer
 	packetReleaseHandler func(*rtp.Packet)
 	sampleRate           uint32
+
+	// indicates whether the lastSeqno field is valid
+	lastSeqnoValid bool
+	// the seqno of the last popped or dropped packet, if any
+	lastSeqno uint16
 
 	// indicates whether the lastTimestamp field is valid
 	lastTimestampValid bool
@@ -35,12 +41,18 @@ type SampleBuilder struct {
 // New constructs a new SampleBuilder.
 //
 // maxLate is the maximum delay, in RTP sequence numbers, that the samplebuilder
-// will wait before dropping a frame.  It must be larger than the largest
-// expected frame size in packets.
+// will wait before dropping a frame.  The actual buffer size is twice as large
+// in order to compensate for delays between Push and Pop.
 func New(maxLate uint16, depacketizer rtp.Depacketizer, sampleRate uint32, opts ...Option) *SampleBuilder {
-	size := maxLate + 1
+	if maxLate < 2 {
+		maxLate = 2
+	}
+	if maxLate > 0x7FFF {
+		maxLate = 0x7FFF
+	}
 	s := &SampleBuilder{
-		packets:      make([]packet, size+1),
+		packets:      make([]packet, 2*maxLate+1),
+		maxLate:      maxLate,
 		depacketizer: depacketizer,
 		sampleRate:   sampleRate,
 	}
@@ -75,6 +87,14 @@ func (s *SampleBuilder) check() {
 	if s.packets[s.dec(s.head)].packet == nil {
 		panic("head is missing")
 	}
+	if s.lastSeqnoValid {
+		// the last dropped packet is before tail
+		diff := s.packets[s.tail].packet.SequenceNumber - s.lastSeqno
+		if diff == 0 || diff&0x8000 != 0 {
+			panic("lastSeqno is after tail")
+		}
+	}
+
 	// indices are sequential, and the start and end flags are correct
 	tailSeqno := s.packets[s.tail].packet.SequenceNumber
 	for i := uint16(0); i < s.length(); i++ {
@@ -148,21 +168,21 @@ func (s *SampleBuilder) isEnd(p *rtp.Packet) bool {
 	return s.depacketizer.IsPartitionTail(p.Marker, p.Payload)
 }
 
-// release releases a packet.
-func (s *SampleBuilder) release(i uint16) {
-	if s.packets[i].packet != nil && s.packetReleaseHandler != nil {
-		s.packetReleaseHandler(s.packets[i].packet)
-	}
-	s.packets[i] = packet{}
-}
-
-// releastTail releases the last packet and increments the tail index.
-func (s *SampleBuilder) releaseTail() bool {
+// release releases the last packet.
+func (s *SampleBuilder) release() bool {
 	if s.head == s.tail {
 		return false
 	}
-	s.release(s.tail)
+	s.lastSeqnoValid = true
+	s.lastSeqno = s.packets[s.tail].packet.SequenceNumber
+	if s.packetReleaseHandler != nil {
+		s.packetReleaseHandler(s.packets[s.tail].packet)
+	}
+	s.packets[s.tail] = packet{}
 	s.tail = s.inc(s.tail)
+	for s.tail != s.head && s.packets[s.tail].packet == nil {
+		s.tail = s.inc(s.tail)
+	}
 	if s.tail == s.head {
 		s.head = 0
 		s.tail = 0
@@ -170,30 +190,27 @@ func (s *SampleBuilder) releaseTail() bool {
 	return true
 }
 
-// releaseAll releases all packets and resets head and tail.
+// releaseAll releases all packets.
 func (s *SampleBuilder) releaseAll() {
-	for i := s.tail; i != s.head; i = s.inc(i) {
-		s.release(i)
+	for s.tail != s.head {
+		s.release()
 	}
-	s.head = 0
-	s.tail = 0
 }
 
-// drop drops the last packet, even if it is incomplete.  It returns true
+// drop drops the last frame, even if it is incomplete.  It returns true
 // if a packet has been dropped, and the dropped packet's timestamp.
 func (s *SampleBuilder) drop() (bool, uint32) {
 	if s.tail == s.head {
 		return false, 0
 	}
 	ts := s.packets[s.tail].packet.Timestamp
-	s.releaseTail()
+	s.release()
 	for s.tail != s.head {
-		if s.packets[s.tail].packet != nil {
-			if s.packets[s.tail].start || s.packets[s.tail].packet.Timestamp != ts {
-				break
-			}
+		if s.packets[s.tail].start ||
+			s.packets[s.tail].packet.Timestamp != ts {
+			break
 		}
-		s.releaseTail()
+		s.release()
 	}
 	if !s.lastTimestampValid {
 		s.lastTimestamp = ts
@@ -207,6 +224,28 @@ func (s *SampleBuilder) drop() (bool, uint32) {
 // Push does not copy the input: the packet will be retained by s.  If you
 // plan to reuse the packet or its buffer, make sure to perform a copy.
 func (s *SampleBuilder) Push(p *rtp.Packet) {
+	if s.lastSeqnoValid {
+		if (s.lastSeqno-p.SequenceNumber)&0x8000 == 0 {
+			// late packet
+			if s.lastSeqno-p.SequenceNumber > s.maxLate {
+				s.lastSeqnoValid = false
+			} else {
+				return
+			}
+		} else {
+			last := p.SequenceNumber - s.maxLate
+			if (last-s.lastSeqno)&0x8000 == 0 {
+				if s.head != s.tail {
+					seqno := s.packets[s.tail].packet.SequenceNumber - 1
+					if (last-seqno)&0x8000 == 0 {
+						last = seqno
+					}
+				}
+				s.lastSeqno = last
+			}
+		}
+	}
+
 	if s.head == s.tail {
 		// empty
 		s.packets[0] = packet{
@@ -214,8 +253,8 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 			end:    s.isEnd(p),
 			packet: p,
 		}
-		s.head = 1
 		s.tail = 0
+		s.head = 1
 		return
 	}
 
@@ -224,7 +263,7 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 	last := s.dec(s.head)
 	lastSeqno := s.packets[last].packet.SequenceNumber
 	if seqno == lastSeqno+1 {
-		// fast path
+		// sequential
 		if s.tail == s.inc(s.head) {
 			s.drop()
 		}
@@ -234,7 +273,7 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 			start = s.packets[last].end ||
 				s.packets[last].packet.Timestamp != p.Timestamp ||
 				s.isStart(p)
-			if start && s.packets[last].packet != nil {
+			if start {
 				s.packets[last].end = true
 			}
 		} else {
@@ -305,6 +344,9 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 
 	if s.packets[index].packet != nil {
 		// duplicate packet
+		if s.packetReleaseHandler != nil {
+			s.packetReleaseHandler(p)
+		}
 		return
 	}
 
@@ -343,18 +385,25 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 	return
 }
 
-// Pop returns a completed packet.  If the oldest packet is incomplete and
-// hasn't reached MaxLate yet, Pop returns nil.
-func (s *SampleBuilder) Pop() *media.Sample {
-	sample, _ := s.PopWithTimestamp()
-	return sample
-}
+func (s *SampleBuilder) pop(force bool) (*media.Sample, uint32) {
+again:
+	if s.tail == s.head {
+		return nil, 0
+	}
 
-// PopWithTimestamp returns a completed packet and its RTP timestamp.  If
-// the oldest packet is incomplete and hasn't reached MaxLate yet, Pop
-// returns nil.
-func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
-	if s.tail == s.head || !s.packets[s.tail].start {
+	if !s.packets[s.tail].start {
+		diff := s.packets[s.dec(s.head)].packet.SequenceNumber -
+			s.packets[s.tail].packet.SequenceNumber
+		if force || diff > s.maxLate {
+			s.drop()
+			goto again
+		}
+		return nil, 0
+	}
+
+	seqno := s.packets[s.tail].packet.SequenceNumber
+	if !force && s.lastSeqnoValid && s.lastSeqno+1 != seqno {
+		// packet loss before tail
 		return nil, 0
 	}
 
@@ -362,6 +411,10 @@ func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
 	last := s.tail
 	for last != s.head && !s.packets[last].end {
 		if s.packets[last].packet == nil {
+			if force {
+				s.drop()
+				goto again
+			}
 			return nil, 0
 		}
 		last = s.inc(last)
@@ -372,9 +425,15 @@ func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
 	}
 
 	var data []byte
-	for s.tail != s.head && s.tail != s.inc(last) {
-		buf, err := s.depacketizer.Unmarshal(s.packets[s.tail].packet.Payload)
-		s.releaseTail()
+	count := last - s.tail + 1
+	if last < s.tail {
+		count = s.cap() + last - s.tail + 1
+	}
+	for i := uint16(0); i < count; i++ {
+		buf, err := s.depacketizer.Unmarshal(
+			s.packets[s.tail].packet.Payload,
+		)
+		s.release()
 		if err != nil {
 			return nil, 0
 		}
@@ -390,15 +449,24 @@ func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
 	s.lastTimestamp = ts
 	duration := time.Duration(float64(samples) / float64(s.sampleRate) * float64(time.Second))
 
-	// preserve the invariant that tail is always a real packet
-	for s.tail != s.head && s.packets[s.tail].packet == nil {
-		s.releaseTail()
-	}
-
 	return &media.Sample{
 		Data:     data,
 		Duration: duration,
 	}, ts
+}
+
+// PopWithTimestamp returns a completed packet and its RTP timestamp.  If
+// the oldest packet is incomplete and hasn't reached MaxLate yet, Pop
+// returns nil.
+func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
+	return s.pop(false)
+}
+
+// Pop returns a completed packet.  If the oldest packet is incomplete and
+// hasn't reached MaxLate yet, Pop returns nil.
+func (s *SampleBuilder) Pop() *media.Sample {
+	sample, _ := s.PopWithTimestamp()
+	return sample
 }
 
 // ForcePopWithTimestamp is like PopWithTimestamp, but will always pops
@@ -407,15 +475,5 @@ func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
 // After ForcePopWithTimestamp returns nil, the samplebuilder is
 // guaranteed to be empty.
 func (s *SampleBuilder) ForcePopWithTimestamp() (*media.Sample, uint32) {
-	for {
-		if s.head == s.tail {
-			return nil, 0
-		}
-
-		sample, ts := s.PopWithTimestamp()
-		if sample != nil {
-			return sample, ts
-		}
-		s.drop()
-	}
+	return s.pop(true)
 }
