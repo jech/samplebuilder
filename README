@@ -1,13 +1,15 @@
 This is a drop-in replacement for Pion's samplebuilder that is faster and
-more correct.
+has slightly different behaviour.  It is used by Galene <https://galene.org>.
 
 Differences from Pion:
 
-  * the `Pop` family of functions don't necessarily pop a packet if it is
-    blocked by an earlier incomplete packet; this limits the amount of
-    lost packets;
+  * the `Pop` family make slightly different decisions about when to
+    release a packet that is blocked by an incomplete packet, with the
+    goal to minimise latency in the lossless case while avoiding spurious
+    packet drops (it's a tricky decision, and Pion itself behaves
+    differently depending on the exact version);
 
   * the `ForcePopWithTimestamp` function can be used to flush any
-    remaining packets;
+    packets remaining at the end of the stream;
 
   * we're about 30% faster.
