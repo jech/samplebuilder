@@ -282,12 +282,6 @@ func TestSamplebuilder(t *testing.T) {
 	}
 }
 
-type truePartitionHeadChecker struct{}
-
-func (f *truePartitionHeadChecker) IsPartitionHead(payload []byte) bool {
-	return true
-}
-
 func TestSampleBuilderSequential(t *testing.T) {
 	s := New(10, &fakeDepacketizer{}, 1)
 	j := 0
