@@ -10,7 +10,7 @@ import (
 )
 
 type fakeDepacketizer struct {
-	headBytes   []byte
+	headChecker func([]byte) bool
 	tailChecker func([]byte, bool) bool
 }
 
@@ -19,10 +19,8 @@ func (f *fakeDepacketizer) Unmarshal(r []byte) ([]byte, error) {
 }
 
 func (f *fakeDepacketizer) IsPartitionHead(payload []byte) bool {
-	for _, b := range f.headBytes {
-		if payload[0] == b {
-			return true
-		}
+	if f.headChecker != nil {
+		return f.headChecker(payload)
 	}
 	return false
 }
@@ -248,7 +246,14 @@ func TestSamplebuilder(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			s := New(test.maxLate, &fakeDepacketizer{
-				headBytes:   test.headBytes,
+				headChecker: func(data []byte) bool {
+					for _, b := range test.headBytes {
+						if data[0] == b {
+							return true
+						}
+					}
+					return false
+				},
 				tailChecker: test.tailChecker,
 			}, 1)
 			samples := []*media.Sample{}
@@ -328,7 +333,7 @@ func TestSampleBuilderSequential(t *testing.T) {
 }
 
 func TestSampleBuilderFull(t *testing.T) {
-	s := New(10, &fakeDepacketizer{[]byte{0}, nil}, 1)
+	s := New(10, &fakeDepacketizer{}, 1)
 	s.Push(&rtp.Packet{
 		Header:  rtp.Header{SequenceNumber: 5000, Timestamp: 5},
 		Payload: []byte{0},
