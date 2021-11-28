@@ -610,6 +610,56 @@ func TestSampleBuilderFull(t *testing.T) {
 	}
 }
 
+func TestSampleBuilderForce(t *testing.T) {
+	s := New(20, &fakeDepacketizer{
+		headChecker: func(body []byte) bool {
+			return body[0] == 0
+		},
+		tailChecker: func(body []byte, _ bool) bool {
+			return body[0] == 0
+		},
+	}, 1)
+	for i, ts := range []uint32{1, 2, 2, 3, 0, 3, 4, 4, 5} {
+		if ts == 0 {
+			continue
+		}
+		s.Push(&rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: uint16(i),
+				Timestamp:      ts,
+			},
+			Payload: []byte{byte(i)},
+		})
+		s.check()
+	}
+
+	var normal, forced []uint32
+	for {
+		sample, ts := s.PopWithTimestamp()
+		s.check()
+		if sample == nil {
+			break
+		}
+		normal = append(normal, ts)
+	}
+	expected := []uint32{1, 2}
+	if !reflect.DeepEqual(normal, expected) {
+		t.Errorf("Got %#v, expected %#v", normal, expected)
+	}
+	for {
+		sample, ts := s.ForcePopWithTimestamp()
+		s.check()
+		if sample == nil {
+			break
+		}
+		forced = append(forced, ts)
+	}
+	expected = []uint32{4}
+	if !reflect.DeepEqual(forced, expected) {
+		t.Errorf("Got %#v, expected %#v", forced, expected)
+	}
+}
+
 func BenchmarkSampleBuilderSequential(b *testing.B) {
 	s := New(100, &fakeDepacketizer{}, 1)
 	b.ResetTimer()
