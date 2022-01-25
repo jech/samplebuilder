@@ -371,7 +371,9 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 		if s.packets[next].packet.Timestamp != ts {
 			end = true
 		}
-		if end {
+		if !end {
+			end = s.packets[next].start
+		} else {
 			s.packets[next].start = true
 		}
 	}
