@@ -59,6 +59,21 @@ var tests = []test{
 		maxLate:    50,
 	},
 	{
+		name: "OnePartitionCheckerTrue",
+		packets: []*rtp.Packet{
+			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5}, Payload: []byte{0x01}},
+		},
+		headBytes: []byte{0x01},
+		tailChecker: func(payload []byte, marker bool) bool {
+			return true
+		},
+		samples: []*media.Sample{
+			{Data: []byte{0x01}},
+		},
+		timestamps: []uint32{5},
+		maxLate:    50,
+	},
+	{
 		name: "Sequential",
 		packets: []*rtp.Packet{
 			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5}, Payload: []byte{0x01}},
