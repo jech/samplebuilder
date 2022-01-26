@@ -675,6 +675,27 @@ func TestSampleBuilderForce(t *testing.T) {
 	}
 }
 
+func TestSampleBuilderForceIncomplete(t *testing.T) {
+	s := New(20, &fakeDepacketizer{
+		headChecker: func(body []byte) bool {
+			return body[0] == 0
+		},
+	}, 1)
+	s.Push(&rtp.Packet{
+		Header:  rtp.Header{},
+		Payload: []byte{42},
+	})
+	s.check()
+	sample, _ := s.ForcePopWithTimestamp()
+	s.check()
+	if sample != nil {
+		t.Errorf("Expected nil, got %v", sample)
+	}
+	if s.head != s.tail {
+		t.Errorf("Expected empty builder")
+	}
+}
+
 func BenchmarkSampleBuilderSequential(b *testing.B) {
 	s := New(100, &fakeDepacketizer{}, 1)
 	b.ResetTimer()
