@@ -97,7 +97,7 @@ func (s *SampleBuilder) check() {
 
 	// indices are sequential, and the start and end flags are correct
 	tailSeqno := s.packets[s.tail].packet.SequenceNumber
-	for i := uint16(0); i < s.length(); i++ {
+	for i := uint16(0); i < uint16(s.Len()); i++ {
 		index := (s.tail + i) % uint16(len(s.packets))
 		if s.packets[index].packet == nil {
 			continue
@@ -127,12 +127,13 @@ func (s *SampleBuilder) check() {
 	}
 }
 
-// length returns the length of the packet sequence stored in the SampleBuilder.
-func (s *SampleBuilder) length() uint16 {
+// Len returns the difference minus one between the smallest and the
+// largest sequence number stored in the SampleBuilder.
+func (s *SampleBuilder) Len() int {
 	if s.tail <= s.head {
-		return s.head - s.tail
+		return int(s.head - s.tail)
 	}
-	return s.head + uint16(len(s.packets)) - s.tail
+	return int(s.head + uint16(len(s.packets)) - s.tail)
 }
 
 // cap returns the capacity of the SampleBuilder.
@@ -297,7 +298,7 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 			return
 		}
 		// make free space
-		for s.length()+count+1 >= s.cap() {
+		for uint16(s.Len())+count+1 >= s.cap() {
 			dropped, _ := s.drop()
 			if !dropped {
 				// this shouldn't happen
