@@ -7,6 +7,7 @@ import (
 
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeDepacketizer struct {
@@ -276,11 +277,11 @@ func TestSamplebuilder(t *testing.T) {
 
 			for _, p := range test.packets {
 				s.Push(p)
-				s.check()
+				require.NoError(t, s.check())
 			}
 			for {
 				sample, timestamp := s.ForcePopWithTimestamp()
-				s.check()
+				require.NoError(t, s.check())
 				if sample == nil {
 					break
 				}
@@ -314,10 +315,10 @@ func TestSampleBuilderSequential(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -362,10 +363,10 @@ func TestSampleBuilderLoss(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -414,10 +415,10 @@ func TestSampleBuilderLossChecker(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -465,10 +466,10 @@ func TestSampleBuilderDisordered(t *testing.T) {
 			Payload: []byte{byte(k)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -517,10 +518,10 @@ func TestSampleBuilderDisorderedChecker(t *testing.T) {
 			Payload: []byte{byte(k)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -573,10 +574,10 @@ func TestSampleBuilderDisorderedLossChecker(t *testing.T) {
 			Payload: []byte{byte(k)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -616,10 +617,10 @@ func TestSampleBuilderFull(t *testing.T) {
 			Header:  rtp.Header{SequenceNumber: i, Timestamp: 5},
 			Payload: []byte{1},
 		})
-		s.check()
+		require.NoError(t, s.check())
 	}
 	sample, _ := s.ForcePopWithTimestamp()
-	s.check()
+	require.NoError(t, s.check())
 	if sample != nil {
 		t.Errorf("Got %v, expected nil", sample)
 	}
@@ -645,13 +646,13 @@ func TestSampleBuilderForce(t *testing.T) {
 			},
 			Payload: []byte{byte(i)},
 		})
-		s.check()
+		require.NoError(t, s.check())
 	}
 
 	var normal, forced []uint32
 	for {
 		sample, ts := s.PopWithTimestamp()
-		s.check()
+		require.NoError(t, s.check())
 		if sample == nil {
 			break
 		}
@@ -663,7 +664,7 @@ func TestSampleBuilderForce(t *testing.T) {
 	}
 	for {
 		sample, ts := s.ForcePopWithTimestamp()
-		s.check()
+		require.NoError(t, s.check())
 		if sample == nil {
 			break
 		}
@@ -830,4 +831,114 @@ func BenchmarkSampleBuilderFragmentedLoss(b *testing.B) {
 	if b.N > 200 && j < b.N/3-100 {
 		b.Errorf("Got %v (N=%v)", j, b.N)
 	}
+}
+
+type testDepacketizer struct {
+	headBytes []byte
+}
+
+func (d *testDepacketizer) Unmarshal(r []byte) ([]byte, error) {
+	return r, nil
+}
+
+func (d *testDepacketizer) IsPartitionHead(payload []byte) bool {
+	if d.headBytes == nil || len(payload) < len(d.headBytes) {
+		return false
+	}
+	for i, b := range d.headBytes {
+		if payload[i] != b {
+			return false
+		}
+	}
+	return true
+}
+
+func (d *testDepacketizer) IsPartitionTail(marker bool, payload []byte) bool {
+	return marker
+}
+
+func TestSampleBuilder(t *testing.T) {
+	t.Run("out of order packets", func(t *testing.T) {
+		sb := New(10, &testDepacketizer{}, 30)
+		sb.Push(testPacketWithSN(5))
+		require.Nil(t, sb.Pop())
+		sb.Push(testPacketWithSN(3))
+		sb.Push(testPacketWithSN(1))
+		require.Nil(t, sb.Pop())
+		require.NoError(t, sb.check())
+		sb.Push(testPacketWithSN(2))
+		sb.Push(testPacketWithSN(4))
+		require.NoError(t, sb.check())
+		for i, pkt := range sb.PopPackets() {
+			require.Equal(t, i+1, pkt.SequenceNumber)
+		}
+	})
+
+	t.Run("does not pop missing packets", func(t *testing.T) {
+		sb := New(10, &testDepacketizer{}, 30)
+		sb.Push(testHeadPacketWithSN(1))
+		sb.Push(testPacketWithSN(5))
+		require.Nil(t, sb.Pop())
+	})
+
+	t.Run("assembles samples", func(t *testing.T) {
+		sb := New(10, &testDepacketizer{
+			headBytes: headerBytes,
+		}, 30)
+
+		// first sample
+		sb.Push(testPacketWithSN(2))
+		sb.Push(testHeadPacketWithSN(1))
+		sb.Push(testTailPacketWithSN(3))
+
+		// second sample
+		sb.Push(testHeadPacketWithSN(4))
+		sb.Push(testTailPacketWithSN(5))
+		sb.Push(testHeadPacketWithSN(6))
+		require.NoError(t, sb.check())
+
+		sample := sb.Pop()
+		require.NotNil(t, sample)
+		require.Equal(t, defaultPacketSize*3, len(sample.Data))
+		require.Equal(t, headerBytes[0], sample.Data[0])
+
+		sample2 := sb.Pop()
+		require.NotNil(t, sample2)
+		require.Equal(t, defaultPacketSize*2, len(sample2.Data))
+	})
+}
+
+const defaultPacketSize = 200
+
+var headerBytes = []byte{0xaa, 0xaa}
+
+func testPacketWithSN(sn uint16) *rtp.Packet {
+	return &rtp.Packet{
+		Header: rtp.Header{
+			SequenceNumber: sn,
+		},
+		Payload: make([]byte, defaultPacketSize),
+	}
+}
+
+func testHeadPacketWithSN(sn uint16) *rtp.Packet {
+	p := &rtp.Packet{
+		Header: rtp.Header{
+			SequenceNumber: sn,
+		},
+		Payload: make([]byte, defaultPacketSize),
+	}
+	copy(p.Payload, headerBytes)
+	return p
+}
+
+func testTailPacketWithSN(sn uint16) *rtp.Packet {
+	p := &rtp.Packet{
+		Header: rtp.Header{
+			Marker:         true,
+			SequenceNumber: sn,
+		},
+		Payload: make([]byte, defaultPacketSize),
+	}
+	return p
 }
