@@ -7,6 +7,7 @@ import (
 
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeDepacketizer struct {
@@ -276,11 +277,11 @@ func TestSamplebuilder(t *testing.T) {
 
 			for _, p := range test.packets {
 				s.Push(p)
-				s.check()
+				require.NoError(t, s.check())
 			}
 			for {
 				sample, timestamp := s.ForcePopWithTimestamp()
-				s.check()
+				require.NoError(t, s.check())
 				if sample == nil {
 					break
 				}
@@ -314,10 +315,10 @@ func TestSampleBuilderSequential(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -362,10 +363,10 @@ func TestSampleBuilderLoss(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -414,10 +415,10 @@ func TestSampleBuilderLossChecker(t *testing.T) {
 			Payload: []byte{byte(i)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -465,10 +466,10 @@ func TestSampleBuilderDisordered(t *testing.T) {
 			Payload: []byte{byte(k)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -517,10 +518,10 @@ func TestSampleBuilderDisorderedChecker(t *testing.T) {
 			Payload: []byte{byte(k)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -573,10 +574,10 @@ func TestSampleBuilderDisorderedLossChecker(t *testing.T) {
 			Payload: []byte{byte(k)},
 		}
 		s.Push(&p)
-		s.check()
+		require.NoError(t, s.check())
 		for {
 			sample, ts := s.PopWithTimestamp()
-			s.check()
+			require.NoError(t, s.check())
 			if sample == nil {
 				break
 			}
@@ -616,10 +617,10 @@ func TestSampleBuilderFull(t *testing.T) {
 			Header:  rtp.Header{SequenceNumber: i, Timestamp: 5},
 			Payload: []byte{1},
 		})
-		s.check()
+		require.NoError(t, s.check())
 	}
 	sample, _ := s.ForcePopWithTimestamp()
-	s.check()
+	require.NoError(t, s.check())
 	if sample != nil {
 		t.Errorf("Got %v, expected nil", sample)
 	}
@@ -645,13 +646,13 @@ func TestSampleBuilderForce(t *testing.T) {
 			},
 			Payload: []byte{byte(i)},
 		})
-		s.check()
+		require.NoError(t, s.check())
 	}
 
 	var normal, forced []uint32
 	for {
 		sample, ts := s.PopWithTimestamp()
-		s.check()
+		require.NoError(t, s.check())
 		if sample == nil {
 			break
 		}
@@ -663,7 +664,7 @@ func TestSampleBuilderForce(t *testing.T) {
 	}
 	for {
 		sample, ts := s.ForcePopWithTimestamp()
-		s.check()
+		require.NoError(t, s.check())
 		if sample == nil {
 			break
 		}

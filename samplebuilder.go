@@ -1,7 +1,9 @@
 // Package samplebuilder builds media frames from RTP packets.
+// it re-orders incoming packets to be in order, and notifies callback when packets are dropped
 package samplebuilder
 
 import (
+	"errors"
 	"time"
 
 	"github.com/pion/rtp"
@@ -36,6 +38,8 @@ type SampleBuilder struct {
 	lastTimestampValid bool
 	// the timestamp of the last popped packet, if any.
 	lastTimestamp uint32
+
+	onPacketDropped func()
 }
 
 // New constructs a new SampleBuilder.
@@ -73,25 +77,33 @@ func WithPacketReleaseHandler(h func(*rtp.Packet)) Option {
 	}
 }
 
+// WithPacketDroppedHandler sets a callback that's called when a packet
+// is dropped. This signifies packet loss.
+func WithPacketDroppedHandler(h func()) Option {
+	return func(s *SampleBuilder) {
+		s.onPacketDropped = h
+	}
+}
+
 // check verifies the samplebuilder's invariants.  It may be used in testing.
-func (s *SampleBuilder) check() {
+func (s *SampleBuilder) check() error {
 	if s.head == s.tail {
-		return
+		return nil
 	}
 
 	// the entry at tail must not be missing
 	if s.packets[s.tail].packet == nil {
-		panic("tail is missing")
+		return errors.New("tail is missing")
 	}
 	// the entry at head-1 must not be missing
 	if s.packets[s.dec(s.head)].packet == nil {
-		panic("head is missing")
+		return errors.New("head is missing")
 	}
 	if s.lastSeqnoValid {
 		// the last dropped packet is before tail
 		diff := s.packets[s.tail].packet.SequenceNumber - s.lastSeqno
 		if diff == 0 || diff&0x8000 != 0 {
-			panic("lastSeqno is after tail")
+			return errors.New("lastSeqno is after tail")
 		}
 	}
 
@@ -103,28 +115,29 @@ func (s *SampleBuilder) check() {
 			continue
 		}
 		if s.packets[index].packet.SequenceNumber != tailSeqno+i {
-			panic("wrong seqno")
+			return errors.New("wrong seqno")
 		}
 		ts := s.packets[index].packet.Timestamp
 		if index != s.tail && !s.packets[index].start {
 			prev := s.dec(index)
 			if s.packets[prev].packet != nil && s.packets[prev].packet.Timestamp != ts {
-				panic("start is not set")
+				return errors.New("start is not set")
 			}
 		}
 		if index != s.dec(s.head) && !s.packets[index].end {
 			next := s.inc(index)
 			if s.packets[next].packet != nil && s.packets[next].packet.Timestamp != ts {
-				panic("end is not set")
+				return errors.New("end is not set")
 			}
 		}
 	}
 	// all packets outside of the interval are missing
 	for i := s.head; i != s.tail; i = s.inc(i) {
 		if s.packets[i].packet != nil {
-			panic("packet is set")
+			return errors.New("packet is set")
 		}
 	}
+	return nil
 }
 
 // Len returns the difference minus one between the smallest and the
@@ -203,6 +216,9 @@ func (s *SampleBuilder) releaseAll() {
 func (s *SampleBuilder) drop() (bool, uint32) {
 	if s.tail == s.head {
 		return false, 0
+	}
+	if s.onPacketDropped != nil {
+		s.onPacketDropped()
 	}
 	ts := s.packets[s.tail].packet.Timestamp
 	s.release()
