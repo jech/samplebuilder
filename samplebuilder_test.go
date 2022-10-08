@@ -255,6 +255,33 @@ var tests = []test{
 		},
 		maxLate: 50,
 	},
+	{
+		// shamelessly stolen from webrtc-rs
+		name: "Padding",
+		packets: []*rtp.Packet{
+			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 1}, Payload: []byte{1}},
+			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 1}, Payload: []byte{2}},
+			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 1, Marker: true}, Payload: []byte{3}},
+			{Header: rtp.Header{SequenceNumber: 5003, Timestamp: 1}, Payload: []byte{}},
+			{Header: rtp.Header{SequenceNumber: 5004, Timestamp: 1}, Payload: []byte{}},
+			{Header: rtp.Header{SequenceNumber: 5005, Timestamp: 3}, Payload: []byte{1}},
+			{Header: rtp.Header{SequenceNumber: 5006, Timestamp: 3, Marker: true}, Payload: []byte{7}},
+			{Header: rtp.Header{SequenceNumber: 5007, Timestamp: 4}, Payload: []byte{1}},
+		},
+		headBytes: []byte{1},
+		tailChecker: func(payload []byte, marker bool) bool {
+			return marker
+		},
+		samples: []*media.Sample{
+			{Data: []byte{1, 2, 3}, Duration: 0},
+			{Data: []byte(nil), Duration: 0},
+			{Data: []byte{1, 7}, Duration: 2 * time.Second},
+		},
+		timestamps: []uint32{
+			1, 1, 3,
+		},
+		maxLate: 50,
+	},
 }
 
 func TestSamplebuilder(t *testing.T) {
@@ -262,6 +289,9 @@ func TestSamplebuilder(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			s := New(test.maxLate, &fakeDepacketizer{
 				headChecker: func(data []byte) bool {
+					if len(data) < 1 {
+						return false
+					}
 					for _, b := range test.headBytes {
 						if data[0] == b {
 							return true
