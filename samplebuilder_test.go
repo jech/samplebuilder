@@ -44,7 +44,6 @@ type test struct {
 	tailChecker func([]byte, bool) bool
 	packets     []*rtp.Packet
 	samples     []*media.Sample
-	timestamps  []uint32
 }
 
 // some tests stolen from Pion's samplebuilder
@@ -54,9 +53,8 @@ var tests = []test{
 		packets: []*rtp.Packet{
 			{Header: rtp.Header{SequenceNumber: 5000, Timestamp: 5}, Payload: []byte{0x01}},
 		},
-		samples:    []*media.Sample{},
-		timestamps: []uint32{},
-		maxLate:    50,
+		samples: []*media.Sample{},
+		maxLate: 50,
 	},
 	{
 		name: "OnePartitionCheckerTrue",
@@ -68,10 +66,9 @@ var tests = []test{
 			return true
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x01}},
+			{Data: []byte{0x01}, PacketTimestamp: 5},
 		},
-		timestamps: []uint32{5},
-		maxLate:    50,
+		maxLate: 50,
 	},
 	{
 		name: "Sequential",
@@ -81,10 +78,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			6,
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
 		},
 		maxLate: 50,
 	},
@@ -97,10 +91,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5003, Timestamp: 7}, Payload: []byte{0x04}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02, 0x03}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			6,
+			{Data: []byte{0x02, 0x03}, Duration: time.Second, PacketTimestamp: 6},
 		},
 		maxLate: 50,
 	},
@@ -111,9 +102,8 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5007, Timestamp: 6}, Payload: []byte{0x02}},
 			{Header: rtp.Header{SequenceNumber: 5008, Timestamp: 7}, Payload: []byte{0x03}},
 		},
-		samples:    []*media.Sample{},
-		timestamps: []uint32{},
-		maxLate:    50,
+		samples: []*media.Sample{},
+		maxLate: 50,
 	},
 	{
 		name: "GapPartitionHeadCheckerTrue",
@@ -124,10 +114,7 @@ var tests = []test{
 		},
 		headBytes: []byte{0x02},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			6,
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
 		},
 		maxLate: 5,
 	},
@@ -138,10 +125,9 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5007, Timestamp: 6}, Payload: []byte{0x02}},
 			{Header: rtp.Header{SequenceNumber: 5008, Timestamp: 7}, Payload: []byte{0x03}},
 		},
-		headBytes:  []byte{},
-		samples:    []*media.Sample{},
-		timestamps: []uint32{},
-		maxLate:    5,
+		headBytes: []byte{},
+		samples:   []*media.Sample{},
+		maxLate:   5,
 	},
 	{
 		name: "Multiple",
@@ -154,16 +140,10 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5005, Timestamp: 6}, Payload: []byte{0x06}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: time.Second},
-			{Data: []byte{0x03}, Duration: time.Second},
-			{Data: []byte{0x04}, Duration: time.Second},
-			{Data: []byte{0x05}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			2,
-			3,
-			4,
-			5,
+			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second},
+			{Data: []byte{0x03}, PacketTimestamp: 3, Duration: time.Second},
+			{Data: []byte{0x04}, PacketTimestamp: 4, Duration: time.Second},
+			{Data: []byte{0x05}, PacketTimestamp: 5, Duration: time.Second},
 		},
 		maxLate: 5,
 	},
@@ -178,16 +158,10 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 2}, Payload: []byte{0x02}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: time.Second},
-			{Data: []byte{0x03}, Duration: time.Second},
-			{Data: []byte{0x04}, Duration: time.Second},
-			{Data: []byte{0x05}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			2,
-			3,
-			4,
-			5,
+			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second},
+			{Data: []byte{0x03}, PacketTimestamp: 3, Duration: time.Second},
+			{Data: []byte{0x04}, PacketTimestamp: 4, Duration: time.Second},
+			{Data: []byte{0x05}, PacketTimestamp: 5, Duration: time.Second},
 		},
 		maxLate: 5,
 	},
@@ -202,16 +176,10 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 2}, Payload: []byte{0x02}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: time.Second},
-			{Data: []byte{0x03}, Duration: time.Second},
-			{Data: []byte{0x04}, Duration: time.Second},
-			{Data: []byte{0x05}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			2,
-			3,
-			4,
-			5,
+			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second},
+			{Data: []byte{0x03}, PacketTimestamp: 3, Duration: time.Second},
+			{Data: []byte{0x04}, PacketTimestamp: 4, Duration: time.Second},
+			{Data: []byte{0x05}, PacketTimestamp: 5, Duration: time.Second},
 		},
 		maxLate: 8,
 	},
@@ -223,11 +191,8 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, Duration: time.Second},
-			{Data: []byte{0x03}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			6, 7,
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
+			{Data: []byte{0x03}, PacketTimestamp: 7, Duration: time.Second},
 		},
 		tailChecker: func(payload []byte, marker bool) bool {
 			return true
@@ -242,12 +207,9 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x01}, Duration: 0},
-			{Data: []byte{0x02}, Duration: time.Second},
-			{Data: []byte{0x03}, Duration: time.Second},
-		},
-		timestamps: []uint32{
-			5, 6, 7,
+			{Data: []byte{0x01}, PacketTimestamp: 5, Duration: 0},
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
+			{Data: []byte{0x03}, PacketTimestamp: 7, Duration: time.Second},
 		},
 		headBytes: []byte{1},
 		tailChecker: func(payload []byte, marker bool) bool {
@@ -273,12 +235,9 @@ var tests = []test{
 			return marker
 		},
 		samples: []*media.Sample{
-			{Data: []byte{1, 2, 3}, Duration: 0},
-			{Data: []byte(nil), Duration: 0},
-			{Data: []byte{1, 7}, Duration: 2 * time.Second},
-		},
-		timestamps: []uint32{
-			1, 1, 3,
+			{Data: []byte{1, 2, 3}, PacketTimestamp: 1, Duration: 0},
+			{Data: []byte(nil), PacketTimestamp: 1, Duration: 0},
+			{Data: []byte{1, 7}, PacketTimestamp: 3, Duration: 2 * time.Second},
 		},
 		maxLate: 50,
 	},
@@ -298,11 +257,8 @@ var tests = []test{
 			return marker
 		},
 		samples: []*media.Sample{
-			{Data: []byte{1, 2}, Duration: 0},            // first sample
-			{Data: []byte{1}, Duration: 1 * time.Second}, // second sample
-		},
-		timestamps: []uint32{
-			1, 2,
+			{Data: []byte{1, 2}, PacketTimestamp: 1, Duration: 0},
+			{Data: []byte{1}, PacketTimestamp: 2, Duration: 1 * time.Second},
 		},
 		maxLate: 50,
 	},
@@ -326,32 +282,24 @@ func TestSamplebuilder(t *testing.T) {
 				tailChecker: test.tailChecker,
 			}, 1)
 			samples := []*media.Sample{}
-			timestamps := []uint32{}
 
 			for _, p := range test.packets {
 				s.Push(p)
 				s.check()
 			}
 			for {
-				sample, timestamp := s.ForcePopWithTimestamp()
+				sample := s.ForcePop()
 				s.check()
 				if sample == nil {
 					break
 				}
 				samples = append(samples, sample)
-				timestamps = append(timestamps, timestamp)
 			}
 			if !reflect.DeepEqual(samples, test.samples) {
 				t.Errorf("got %#v, expected %#v",
 					samples, test.samples,
 				)
 			}
-			if !reflect.DeepEqual(timestamps, test.timestamps) {
-				t.Errorf("got %v, expected %v",
-					timestamps, test.timestamps,
-				)
-			}
-
 		})
 	}
 }

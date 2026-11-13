@@ -388,10 +388,10 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 	return
 }
 
-func (s *SampleBuilder) pop(force bool) (*media.Sample, uint32) {
+func (s *SampleBuilder) pop(force bool) *media.Sample {
 again:
 	if s.tail == s.head {
-		return nil, 0
+		return nil
 	}
 
 	if !s.packets[s.tail].start {
@@ -401,13 +401,13 @@ again:
 			s.drop()
 			goto again
 		}
-		return nil, 0
+		return nil
 	}
 
 	seqno := s.packets[s.tail].packet.SequenceNumber
 	if !force && s.lastSeqnoValid && s.lastSeqno+1 != seqno {
 		// packet loss before tail
-		return nil, 0
+		return nil
 	}
 
 	ts := s.packets[s.tail].packet.Timestamp
@@ -418,13 +418,13 @@ again:
 				s.drop()
 				goto again
 			}
-			return nil, 0
+			return nil
 		}
 		last = s.inc(last)
 	}
 
 	if last == s.head {
-		return nil, 0
+		return nil
 	}
 
 	var data []byte
@@ -438,7 +438,7 @@ again:
 		)
 		s.release()
 		if err != nil {
-			return nil, 0
+			return nil
 		}
 		data = append(data, buf...)
 	}
@@ -453,30 +453,40 @@ again:
 	duration := time.Duration(float64(samples) / float64(s.sampleRate) * float64(time.Second))
 
 	return &media.Sample{
-		Data:     data,
-		Duration: duration,
-	}, ts
-}
-
-// PopWithTimestamp returns a completed packet and its RTP timestamp.  If
-// the oldest packet is incomplete and hasn't reached MaxLate yet, Pop
-// returns nil.
-func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
-	return s.pop(false)
+		Data:            data,
+		Duration:        duration,
+		PacketTimestamp: ts,
+	}
 }
 
 // Pop returns a completed packet.  If the oldest packet is incomplete and
 // hasn't reached MaxLate yet, Pop returns nil.
 func (s *SampleBuilder) Pop() *media.Sample {
-	sample, _ := s.PopWithTimestamp()
-	return sample
+	return s.pop(false)
 }
 
-// ForcePopWithTimestamp is like PopWithTimestamp, but will always pops
-// a sample if any are available, even if it's being blocked by a missing
-// packet.  This is useful when the stream ends, or after a link outage.
-// After ForcePopWithTimestamp returns nil, the samplebuilder is
-// guaranteed to be empty.
-func (s *SampleBuilder) ForcePopWithTimestamp() (*media.Sample, uint32) {
+// PopWithTimestamp is obsolete.  Use Pop instead.
+func (s *SampleBuilder) PopWithTimestamp() (*media.Sample, uint32) {
+	sample := s.pop(false)
+	if sample == nil {
+		return nil, 0
+	}
+	return sample, sample.PacketTimestamp
+}
+
+// ForcePop is like Pop, but will always pop a sample if any are
+// available, even if it's being blocked by a missing packet.  This is
+// useful when the stream ends, or after a link outage.  After ForcePop
+// returns nil, the samplebuilder is guaranteed to be empty.
+func (s *SampleBuilder) ForcePop() *media.Sample {
 	return s.pop(true)
+}
+
+// ForcePopWithTimestamp is obsolete.  Use ForcePop instead.
+func (s *SampleBuilder) ForcePopWithTimestamp() (*media.Sample, uint32) {
+	sample := s.pop(true)
+	if sample == nil {
+		return nil, 0
+	}
+	return sample, sample.PacketTimestamp
 }
