@@ -78,7 +78,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second, PrevDroppedPackets: 1},
 		},
 		maxLate: 50,
 	},
@@ -91,7 +91,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5003, Timestamp: 7}, Payload: []byte{0x04}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02, 0x03}, Duration: time.Second, PacketTimestamp: 6},
+			{Data: []byte{0x02, 0x03}, Duration: time.Second, PacketTimestamp: 6, PrevDroppedPackets: 1},
 		},
 		maxLate: 50,
 	},
@@ -114,7 +114,7 @@ var tests = []test{
 		},
 		headBytes: []byte{0x02},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second, PrevDroppedPackets: 7},
 		},
 		maxLate: 5,
 	},
@@ -140,7 +140,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5005, Timestamp: 6}, Payload: []byte{0x06}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second},
+			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second, PrevDroppedPackets: 1},
 			{Data: []byte{0x03}, PacketTimestamp: 3, Duration: time.Second},
 			{Data: []byte{0x04}, PacketTimestamp: 4, Duration: time.Second},
 			{Data: []byte{0x05}, PacketTimestamp: 5, Duration: time.Second},
@@ -158,7 +158,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 2}, Payload: []byte{0x02}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second},
+			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second, PrevDroppedPackets: 1},
 			{Data: []byte{0x03}, PacketTimestamp: 3, Duration: time.Second},
 			{Data: []byte{0x04}, PacketTimestamp: 4, Duration: time.Second},
 			{Data: []byte{0x05}, PacketTimestamp: 5, Duration: time.Second},
@@ -176,7 +176,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5001, Timestamp: 2}, Payload: []byte{0x02}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second},
+			{Data: []byte{0x02}, PacketTimestamp: 2, Duration: time.Second, PrevDroppedPackets: 1},
 			{Data: []byte{0x03}, PacketTimestamp: 3, Duration: time.Second},
 			{Data: []byte{0x04}, PacketTimestamp: 4, Duration: time.Second},
 			{Data: []byte{0x05}, PacketTimestamp: 5, Duration: time.Second},
@@ -191,7 +191,7 @@ var tests = []test{
 			{Header: rtp.Header{SequenceNumber: 5002, Timestamp: 7}, Payload: []byte{0x03}},
 		},
 		samples: []*media.Sample{
-			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second},
+			{Data: []byte{0x02}, PacketTimestamp: 6, Duration: time.Second, PrevDroppedPackets: 1},
 			{Data: []byte{0x03}, PacketTimestamp: 7, Duration: time.Second},
 		},
 		tailChecker: func(payload []byte, marker bool) bool {

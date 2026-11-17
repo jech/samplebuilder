@@ -36,6 +36,9 @@ type SampleBuilder struct {
 	lastTimestampValid bool
 	// the timestamp of the last popped packet, if any.
 	lastTimestamp uint32
+
+	// the number of packets dropped just after tail
+	dropped uint16
 }
 
 // New constructs a new SampleBuilder.
@@ -169,10 +172,18 @@ func (s *SampleBuilder) isEnd(p *rtp.Packet) bool {
 	return s.depacketizer.IsPartitionTail(p.Marker, p.Payload)
 }
 
+func sadd(a, b uint16) uint16 {
+	s := uint32(a) + uint32(b)
+	if s > uint32(^uint16(0)) {
+		return ^uint16(0)
+	}
+	return uint16(s)
+}
+
 // release releases the last packet.
-func (s *SampleBuilder) release() bool {
+func (s *SampleBuilder) release() uint16 {
 	if s.head == s.tail {
-		return false
+		return 0
 	}
 	s.lastSeqnoValid = true
 	s.lastSeqno = s.packets[s.tail].packet.SequenceNumber
@@ -181,17 +192,19 @@ func (s *SampleBuilder) release() bool {
 	}
 	s.packets[s.tail] = packet{}
 	s.tail = s.inc(s.tail)
+	dropped := uint16(1)
 	for s.tail != s.head && s.packets[s.tail].packet == nil {
 		s.tail = s.inc(s.tail)
+		dropped++
 	}
 	if s.tail == s.head {
 		s.head = 0
 		s.tail = 0
 	}
-	return true
+	return dropped
 }
 
-// releaseAll releases all packets.
+// releaseAll releases all packets.  This does not update s.dropped.
 func (s *SampleBuilder) releaseAll() {
 	for s.tail != s.head {
 		s.release()
@@ -205,14 +218,15 @@ func (s *SampleBuilder) drop() (bool, uint32) {
 		return false, 0
 	}
 	ts := s.packets[s.tail].packet.Timestamp
-	s.release()
+	dropped := s.release()
 	for s.tail != s.head {
 		if s.packets[s.tail].start ||
 			s.packets[s.tail].packet.Timestamp != ts {
 			break
 		}
-		s.release()
+		dropped += s.release()
 	}
+	s.dropped = sadd(s.dropped, dropped)
 	if !s.lastTimestampValid {
 		s.lastTimestamp = ts
 		s.lastTimestampValid = true
@@ -242,6 +256,7 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 						last = seqno
 					}
 				}
+				s.dropped = sadd(s.dropped, last-s.lastSeqno)
 				s.lastSeqno = last
 			}
 		}
@@ -294,6 +309,7 @@ func (s *SampleBuilder) Push(p *rtp.Packet) {
 		count := seqno - lastSeqno - 1
 		if count >= s.cap() {
 			s.releaseAll()
+			s.dropped = sadd(s.dropped, count)
 			s.Push(p)
 			return
 		}
@@ -443,6 +459,9 @@ again:
 		data = append(data, buf...)
 	}
 
+	dropped := s.dropped
+	s.dropped = 0
+
 	var samples uint32
 	if s.lastTimestampValid {
 		samples = ts - s.lastTimestamp
@@ -453,9 +472,10 @@ again:
 	duration := time.Duration(float64(samples) / float64(s.sampleRate) * float64(time.Second))
 
 	return &media.Sample{
-		Data:            data,
-		Duration:        duration,
-		PacketTimestamp: ts,
+		Data:               data,
+		Duration:           duration,
+		PacketTimestamp:    ts,
+		PrevDroppedPackets: dropped,
 	}
 }
 
